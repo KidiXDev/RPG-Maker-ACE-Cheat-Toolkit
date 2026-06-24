@@ -1,0 +1,11 @@
+# Build output
+/RPG-Maker-ACE-Cheater-Patcher.exe
+/rpgmac-patcher.exe
+*.exe
+
+# Local test artifacts
+/patched_scene_base.tmp.rb
+
+# OS / editor
+Thumbs.db
+.DS_Store
