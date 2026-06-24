@@ -68,17 +68,28 @@ RPG-Maker-ACE-Cheater-Patcher.exe "C:\path\to\game" repatch
 ## In-game cheat menu
 
 Open / close with **CTRL + C**. Navigate with the **arrow keys**, confirm with
-**Enter**, go back / close with **Esc**.
+**Enter / Z / Space**, go back / close with **Esc**. Every action shows a
+feedback toast in the banner, and errors are caught and reported instead of
+crashing the game. (Input is read from physical keys, so it works even if the
+game remaps RPG Maker's logical controls.)
 
-| Category | Actions |
+| Menu | Actions |
 | --- | --- |
-| **Party** | Heal & revive all party · Set all party HP to 1 |
-| **Enemies** (battle only) | Kill all enemies · Set enemies HP to 1 · Heal all enemies |
-| **Gold** | Gain 10,000 gold |
-| **Items** | Browse owned items/weapons/armor; **←/→** to remove/add (hold **Shift** for ×10) |
-| **Teleport** | Save current position · Load saved position |
+| **Party & Stats** | Heal & revive all party · Set all party HP to 1 · **Stat editor** (per-actor: Level, EXP, HP/MP, and all 8 params) |
+| **Gold & Items** | Gain 10,000 / 100,000 gold · **Edit owned items** · **Item spawner** (every item / weapon / armor in the database, straight into your inventory) |
+| **Battle** (in battle only) | Kill all enemies · Set enemies HP to 1 · Heal all enemies |
+| **World / Teleport** | **Teleport to any map** (full map list) · Save current position · Load saved position |
+| **Toggles** | **God Mode** (party takes no damage / can't die) · **No Clip** (walk through walls) · **Game Speed** 1–4× · **Battle Speed** 1–4× |
+| **Switches & Variables** | Browse & toggle switches · Browse & edit variables |
+| **Custom Scripts** | Run `asac.q.rb` / `asac.w.rb` / `asac.e.rb` · Reload them |
 | **Save** | Save game to slot 2 |
-| **Custom scripts** | Run `asac.q.rb` / `asac.w.rb` / `asac.e.rb` · Reload them |
+
+In list editors (items, spawner, variables, stats): **→ / Enter** increases,
+**←** decreases, hold **Shift** for the larger step (×10, or ×100 for variables).
+
+Toggle cheats apply continuously even when the menu is closed. Game/Battle speed
+work by scaling the engine frame rate (Battle Speed only ramps up inside
+battles); they reset to normal when set back to 1×.
 
 ### Custom scripts (`asac.*.rb`)
 
@@ -93,8 +104,9 @@ in one of these scripts can crash the game.
 main.go                  Go patcher (decrypt → unpack → inject → repack)
 ruby/rgss_decrypter.rb   pure-Ruby RGSSAD v1/v3 archive extractor
 ruby/scripts_packer.rb   pure-Ruby Scripts.rvdata2 (un)packer (Marshal + zlib)
-cheat/01_cheat_windows.rb  RGSS3 window classes for the menu
-cheat/02_ascheater.rb      AsCheater module: CTRL+C toggle, menu driver, cheats
+cheat/01_cheat_windows.rb  RGSS3 window classes (help banner, command + list windows)
+cheat/02_ascheater.rb      AsCheater module: CTRL+C toggle, menu engine, cheats
+cheat/03_cheat_hooks.rb    persistent class hooks (god mode, no-clip)
 build.bat / build.sh     build the patcher
 ```
 

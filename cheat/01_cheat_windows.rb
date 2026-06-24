@@ -6,20 +6,22 @@
 # the menu can run as a self-contained modal overlay above any scene.
 # =============================================================================
 
-# Top banner: shows the current page title and the available controls.
+# Top banner: page title, control hints, and a transient feedback line.
 class Window_CheatHelp < Window_Base
   def initialize(x, y, width)
-    super(x, y, width, fitting_height(2))
-    self.z = 10_001
+    super(x, y, width, fitting_height(3))
+    self.z = 10_002
     @title = ""
     @controls = ""
+    @feedback = ""
     refresh
   end
 
-  def set_text(title, controls)
-    return if title == @title && controls == @controls
+  def set_all(title, controls, feedback)
+    return if title == @title && controls == @controls && feedback == @feedback
     @title = title
     @controls = controls
+    @feedback = feedback
     refresh
   end
 
@@ -29,13 +31,15 @@ class Window_CheatHelp < Window_Base
     draw_text(0, 0, contents.width, line_height, @title)
     change_color(system_color)
     draw_text(0, line_height, contents.width, line_height, @controls)
+    change_color(@feedback.empty? ? normal_color : crisis_color)
+    draw_text(0, line_height * 2, contents.width, line_height, @feedback)
     change_color(normal_color)
   end
 end
 
 # Generic command list built from [name, symbol, enabled] triples.
 class Window_CheatCommand < Window_Command
-  MAX_VISIBLE = 11
+  MAX_VISIBLE = 12
 
   def initialize(x, y, list, width = 544)
     # NOTE: Window_Command uses @list internally for its commands, so the source
@@ -65,15 +69,25 @@ class Window_CheatCommand < Window_Command
   end
 end
 
-# Scrollable list of every item/weapon/armor the party owns, with quantities.
-class Window_CheatItems < Window_Selectable
+# Generic scrollable list. Rows are arbitrary objects rendered through a
+# formatter proc (and an optional icon proc). The AsCheater module decides what
+# confirm / left / right do per list.
+class Window_CheatList < Window_Selectable
   def initialize(x, y, width, height)
     super(x, y, width, height)
     self.z = 10_000
-    @data = []
-    refresh
-    select(0)
+    @rows = []
+    @formatter = nil
+    @icon_proc = nil
     activate
+  end
+
+  def set_data(rows, formatter, icon_proc = nil)
+    @rows = rows || []
+    @formatter = formatter
+    @icon_proc = icon_proc
+    refresh
+    select(item_max > 0 ? 0 : -1)
   end
 
   def col_max
@@ -81,33 +95,36 @@ class Window_CheatItems < Window_Selectable
   end
 
   def item_max
-    @data ? @data.size : 0
+    @rows ? @rows.size : 0
   end
 
-  def item
-    @data && index >= 0 ? @data[index] : nil
+  def current_row
+    @rows && index >= 0 ? @rows[index] : nil
   end
 
   def refresh
-    make_item_list
     create_contents
     draw_all_items
   end
 
-  def make_item_list
-    @data = []
-    @data.concat($game_party.items)
-    @data.concat($game_party.weapons)
-    @data.concat($game_party.armors)
-    @data.compact!
+  def draw_item(i)
+    row = @rows[i]
+    return unless row
+    rect = item_rect_for_text(i)
+    if @icon_proc
+      icon = @icon_proc.call(row)
+      if icon && icon > 0
+        draw_icon(icon, rect.x, rect.y)
+        rect.x += 24
+        rect.width -= 24
+      end
+    end
+    text = @formatter ? @formatter.call(row) : row.to_s
+    draw_text(rect, text)
   end
 
-  def draw_item(index)
-    obj = @data[index]
-    return unless obj
-    rect = item_rect_for_text(index)
-    draw_item_name(obj, rect.x, rect.y, true, rect.width - 64)
-    number = $game_party.item_number(obj)
-    draw_text(rect, sprintf("x%2d", number), 2)
+  # Redraw just the selected row after an in-place edit (keeps scroll position).
+  def redraw_current
+    redraw_item(index) if index >= 0
   end
 end
