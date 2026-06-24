@@ -33,15 +33,25 @@ module RMVC
   VK_DOWN    = 0x28
   VK_LSHIFT  = 0xA0
   VK_RSHIFT  = 0xA1
+  VK_BACK    = 0x08
 
   MENU_KEYS = {
     confirm: [VK_RETURN, VK_SPACE, VK_Z],
+    enter:   [VK_RETURN], # confirm key for search lists (Z/Space are used to type)
     cancel:  [VK_ESCAPE],
     up:      [VK_UP],
     down:    [VK_DOWN],
     left:    [VK_LEFT],
     right:   [VK_RIGHT],
   }
+
+  # Printable keys for the live search field (case-insensitive, so all lowercase).
+  TYPE_KEYS = {}
+  (0x41..0x5A).each { |vk| TYPE_KEYS[vk] = (vk - 0x41 + 97).chr } # A-Z -> a-z
+  (0x30..0x39).each { |vk| TYPE_KEYS[vk] = (vk - 0x30 + 48).chr } # 0-9
+  (0x60..0x69).each { |vk| TYPE_KEYS[vk] = (vk - 0x60 + 48).chr } # numpad 0-9
+  TYPE_KEYS[0x20] = " "
+  TYPE_KEYS.freeze
 
   # Custom user-script slots: drop rmvc.q.rb / rmvc.w.rb / rmvc.e.rb in the game
   # root folder and run them from the "Custom Scripts" menu.
@@ -56,6 +66,7 @@ module RMVC
   @key_state     = DL::CPtr.new(DL.malloc(256), 256)
   @ctrl_was_down = false
   @prev_down     = {}
+  @prev_type     = {}
   @input         = {}
 
   @menu_open  = false
@@ -107,6 +118,26 @@ module RMVC
       @input[name] = down && !@prev_down[name]
       @prev_down[name] = down
     end
+  end
+
+  # Returns a typed character, :backspace, or nil (edge-detected, one per frame).
+  def self.scan_typing
+    typed = nil
+    back_down = key_down?(VK_BACK)
+    typed = :backspace if back_down && !@prev_type[VK_BACK]
+    @prev_type[VK_BACK] = back_down
+    TYPE_KEYS.each do |vk, ch|
+      down = key_down?(vk)
+      typed = ch if down && !@prev_type[vk] && typed.nil?
+      @prev_type[vk] = down
+    end
+    typed
+  end
+
+  # Seed previous-down state so keys held when a search opens don't auto-type.
+  def self.prime_typing
+    @prev_type[VK_BACK] = key_down?(VK_BACK)
+    TYPE_KEYS.each_key { |vk| @prev_type[vk] = key_down?(vk) }
   end
 
   def self.menu_confirm?
@@ -217,6 +248,29 @@ module RMVC
     @stack.push(window: window, type: :list, title: title, controls: controls, handlers: handlers)
   end
 
+  # A list with a live, type-to-filter search field. `name_of` maps a row to the
+  # text searched against; `all_rows` may exceed LIST_CAP since filtering narrows
+  # it (the displayed slice is always capped to keep the window bitmap sane).
+  def self.push_search_list_page(base_title, all_rows, formatter, handlers, controls, name_of, icon_proc = nil)
+    @stack.last[:window].visible = false unless @stack.empty?
+    window = Window_CheatList.new(0, menu_y, Graphics.width, list_height)
+    page = { window: window, type: :search_list, base_title: base_title, controls: controls,
+             handlers: handlers, all_rows: all_rows, name_of: name_of,
+             formatter: formatter, icon: icon_proc, filter: "" }
+    @stack.push(page)
+    apply_filter(page)
+    prime_typing
+  end
+
+  def self.apply_filter(page)
+    query = page[:filter].downcase
+    rows = page[:all_rows]
+    unless query.empty?
+      rows = rows.select { |r| page[:name_of].call(r).to_s.downcase.include?(query) }
+    end
+    page[:window].set_data(rows.first(LIST_CAP), page[:formatter], page[:icon])
+  end
+
   def self.pop_page
     page = @stack.pop
     page[:window].dispose if page
@@ -244,6 +298,7 @@ module RMVC
     page = @stack.last
     return unless page
     refresh_menu_input
+    update_search_field(page) if page[:type] == :search_list
     page[:window].update
 
     if @flash_timer > 0
@@ -251,12 +306,31 @@ module RMVC
     else
       @flash_text = ""
     end
-    @help.set_all(page[:title], page[:controls], @flash_text) if @help
+    @help.set_all(page_title(page), page[:controls], @flash_text) if @help
 
-    if page[:type] == :list
-      handle_list_input(page[:window], page)
-    else
-      handle_command_input(page[:window])
+    case page[:type]
+    when :search_list then handle_search_list_input(page[:window], page)
+    when :list        then handle_list_input(page[:window], page)
+    else                   handle_command_input(page[:window])
+    end
+  end
+
+  def self.page_title(page)
+    return page[:title] unless page[:type] == :search_list
+    shown = page[:window].item_max
+    total = page[:all_rows].size
+    "#{page[:base_title]}  Search: #{page[:filter]}_  (#{shown}/#{total})"
+  end
+
+  def self.update_search_field(page)
+    ch = scan_typing
+    if ch == :backspace
+      return if page[:filter].empty?
+      page[:filter] = page[:filter][0...-1]
+      apply_filter(page)
+    elsif ch
+      page[:filter] = page[:filter] + ch
+      apply_filter(page)
     end
   end
 
@@ -283,6 +357,42 @@ module RMVC
     handlers = page[:handlers]
     key = nil
     key = :confirm if menu_confirm? && handlers[:confirm]
+    key ||= :right if @input[:right] && handlers[:right]
+    key ||= :left if @input[:left] && handlers[:left]
+    return unless key
+
+    row = window.current_row
+    unless row
+      Sound.play_buzzer
+      return
+    end
+
+    begin
+      message = handlers[key].call(row)
+      window.redraw_current if @menu_open && !window.disposed?
+      flash(message, true) if message
+    rescue StandardError => e
+      flash("Error: #{e.message}", false)
+    end
+  end
+
+  def self.handle_search_list_input(window, page)
+    if menu_cancel?
+      # Esc clears the filter first, then leaves the page.
+      if page[:filter].empty?
+        Sound.play_cancel
+        pop_page
+      else
+        page[:filter] = ""
+        apply_filter(page)
+        Sound.play_cancel
+      end
+      return
+    end
+
+    handlers = page[:handlers]
+    key = nil
+    key = :confirm if @input[:enter] && handlers[:confirm] # Enter only (Z/Space type)
     key ||= :right if @input[:right] && handlers[:right]
     key ||= :left if @input[:left] && handlers[:left]
     return unless key
@@ -435,7 +545,8 @@ module RMVC
     when :enemy_kill
       return unless require_battle
       $game_troop.alive_members.each { |e| e.hp = 0 }
-      flash("Killed all enemies")
+      Sound.play_ok
+      close_menu # let the battle resume and trigger the victory sequence
     when :enemy_hp1
       return unless require_battle
       $game_troop.alive_members.each { |e| e.hp = 1 }
@@ -490,14 +601,8 @@ module RMVC
     shift_down? ? 10 : 1
   end
 
-  def self.open_owned_items
-    rows = ($game_party.items + $game_party.weapons + $game_party.armors).compact
-    if rows.empty?
-      flash("Inventory is empty", false)
-      return
-    end
-    formatter = proc { |o| "#{o.name}   x#{$game_party.item_number(o)}" }
-    icon = proc { |o| o.icon_index }
+  # Shared +/- handlers for item-like lists (items, weapons, armors).
+  def self.item_quantity_handlers
     add = proc do |o|
       $game_party.gain_item(o, step_amount)
       "#{o.name}: #{$game_party.item_number(o)}"
@@ -506,9 +611,20 @@ module RMVC
       $game_party.gain_item(o, -step_amount)
       "#{o.name}: #{$game_party.item_number(o)}"
     end
-    push_list_page("Owned Items (#{rows.size})", rows.first(LIST_CAP), formatter,
-                   { confirm: add, right: add, left: remove },
-                   "Right/Enter: +   Left: -   Shift: x10   Esc: Back", icon)
+    { confirm: add, right: add, left: remove }
+  end
+
+  ITEM_CONTROLS = "Type: search   Enter/Right: +   Left: -   Shift: x10   Esc: clear/back"
+
+  def self.open_owned_items
+    rows = ($game_party.items + $game_party.weapons + $game_party.armors).compact
+    if rows.empty?
+      flash("Inventory is empty", false)
+      return
+    end
+    formatter = proc { |o| "#{o.name}   x#{$game_party.item_number(o)}" }
+    push_search_list_page("Owned Items", rows, formatter, item_quantity_handlers,
+                          ITEM_CONTROLS, proc { |o| o.name }, proc { |o| o.icon_index })
   end
 
   def self.open_spawn_list(kind)
@@ -522,21 +638,9 @@ module RMVC
       flash("No #{kind} in database", false)
       return
     end
-    truncated = rows.size > LIST_CAP
     formatter = proc { |o| "#{o.name}   (have #{$game_party.item_number(o)})" }
-    icon = proc { |o| o.icon_index }
-    add = proc do |o|
-      $game_party.gain_item(o, step_amount)
-      "#{o.name}: #{$game_party.item_number(o)}"
-    end
-    remove = proc do |o|
-      $game_party.gain_item(o, -step_amount)
-      "#{o.name}: #{$game_party.item_number(o)}"
-    end
-    title = "Spawn #{kind.to_s.capitalize} (#{rows.size}#{truncated ? ", showing #{LIST_CAP}" : ''})"
-    push_list_page(title, rows.first(LIST_CAP), formatter,
-                   { confirm: add, right: add, left: remove },
-                   "Right/Enter: +   Left: -   Shift: x10   Esc: Back", icon)
+    push_search_list_page("Spawn #{kind.to_s.capitalize}", rows, formatter, item_quantity_handlers,
+                          ITEM_CONTROLS, proc { |o| o.name }, proc { |o| o.icon_index })
   end
 
   def self.open_map_list
@@ -550,25 +654,27 @@ module RMVC
     end
     formatter = proc { |pair| sprintf("%03d  %s", pair[0], pair[1]) }
     go = proc { |pair| teleport_to(pair[0]) }
-    push_list_page("Teleport - #{rows.size} maps", rows.first(LIST_CAP), formatter,
-                   { confirm: go }, "Enter: Teleport   Esc: Back")
+    name_of = proc { |pair| "#{pair[0]} #{pair[1]}" } # searchable by id or name
+    push_search_list_page("Teleport", rows, formatter, { confirm: go },
+                          "Type: search   Enter: Teleport   Esc: clear/back", name_of)
   end
 
   def self.open_switch_explorer
     names = $data_system.switches
-    ids = named_data_ids(names)
+    ids = named_ids(names)
     formatter = proc { |id| sprintf("%04d %s = %s", id, names[id], $game_switches[id] ? "ON" : "OFF") }
     toggle = proc do |id|
       $game_switches[id] = !$game_switches[id]
       sprintf("Switch %04d = %s", id, $game_switches[id] ? "ON" : "OFF")
     end
-    push_list_page("Switches (#{ids.size})", ids, formatter,
-                   { confirm: toggle }, "Enter: Toggle   Esc: Back")
+    name_of = proc { |id| "#{id} #{names[id]}" }
+    push_search_list_page("Switches", ids, formatter, { confirm: toggle },
+                          "Type: search   Enter: Toggle   Esc: clear/back", name_of)
   end
 
   def self.open_variable_explorer
     names = $data_system.variables
-    ids = named_data_ids(names)
+    ids = named_ids(names)
     formatter = proc { |id| sprintf("%04d %s = %d", id, names[id], $game_variables[id]) }
     inc = proc do |id|
       $game_variables[id] = $game_variables[id] + step_big
@@ -578,20 +684,22 @@ module RMVC
       $game_variables[id] = $game_variables[id] - step_big
       "Variable #{id} = #{$game_variables[id]}"
     end
-    push_list_page("Variables (#{ids.size})", ids, formatter,
-                   { confirm: inc, right: inc, left: dec },
-                   "Right/Enter: +   Left: -   Shift: x100   Esc: Back")
+    name_of = proc { |id| "#{id} #{names[id]}" }
+    push_search_list_page("Variables", ids, formatter, { confirm: inc, right: inc, left: dec },
+                          "Type: search   Right/Enter: +   Left: -   Shift: x100   Esc: clear/back", name_of)
   end
 
   def self.step_big
     shift_down? ? 100 : 1
   end
 
-  def self.named_data_ids(names)
+  # All ids whose name is set; or every id when none are named. Uncapped (the
+  # search list caps what it displays).
+  def self.named_ids(names)
     ids = []
     (1...names.size).each { |i| ids << i unless names[i].to_s.empty? }
-    ids = (1...[names.size, LIST_CAP + 1].min).to_a if ids.empty?
-    ids.first(LIST_CAP)
+    ids = (1...names.size).to_a if ids.empty?
+    ids
   end
 
   # ---- stat editor ---------------------------------------------------------
