@@ -2,7 +2,7 @@
 # RPG Maker VX Ace Cheat Toolkit - GUI windows
 # -----------------------------------------------------------------------------
 # RGSS3 Window classes used by the in-game cheat menu. They only handle drawing
-# and cursor movement; all input decisions are made by the AsCheater module so
+# and cursor movement; all input decisions are made by the RMVC module so
 # the menu can run as a self-contained modal overlay above any scene.
 # =============================================================================
 
@@ -70,7 +70,7 @@ class Window_CheatCommand < Window_Command
 end
 
 # Generic scrollable list. Rows are arbitrary objects rendered through a
-# formatter proc (and an optional icon proc). The AsCheater module decides what
+# formatter proc (and an optional icon proc). The RMVC module decides what
 # confirm / left / right do per list.
 class Window_CheatList < Window_Selectable
   def initialize(x, y, width, height)

@@ -4,8 +4,8 @@
 // VX Ace game. It:
 //  1. Decrypts Game.rgss3a to loose files (pure-Ruby rgss_decrypter.rb).
 //  2. Unpacks Data/Scripts.rvdata2 to editable .rb files (scripts_packer.rb).
-//  3. Injects the AsCheater cheat module into Scripts/Scene_Base.rb and inserts
-//     `AsCheater.update` at the start of Scene_Base#update.
+//  3. Injects the RMVC cheat module into Scripts/Scene_Base.rb and inserts
+//     `RMVC.update` at the start of Scene_Base#update.
 //  4. Repacks Scripts.rvdata2.
 //
 // The embedded Ruby tools are written to a temp dir and run via `ruby` on PATH.
@@ -30,8 +30,8 @@ const (
 	GameRGSS3ABackup = "Game.rgss3a~"
 	ScriptsRVDATA2   = "Scripts.rvdata2"
 	SceneBaseSuffix  = "_Scene_Base.rb"
-	InjectionCall    = "    AsCheater.update"
-	CheatMarker      = "module AsCheater"
+	InjectionCall    = "    RMVC.update"
+	CheatMarker      = "module RMVC"
 )
 
 // Embedded pure-Ruby tools and the cheat payload fragments.

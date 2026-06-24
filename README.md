@@ -18,10 +18,10 @@ third-party binaries).
 2. **Unpack** `Data/Scripts.rvdata2` into editable `.rb` files — pure-Ruby
    Marshal+zlib (un)packer (`ruby/scripts_packer.rb`).
 3. **Inject** the cheat module (`cheat/*.rb`) at the top of `Scene_Base.rb` and
-   add `AsCheater.update` at the start of `Scene_Base#update`.
+   add `RMVC.update` at the start of `Scene_Base#update`.
 4. **Repack** the scripts back into `Data/Scripts.rvdata2`.
 
-At runtime, `AsCheater.update` watches for **CTRL + C** (via Win32
+At runtime, `RMVC.update` watches for **CTRL + C** (via Win32
 `GetKeyboardState`). When pressed it opens a modal RGSS3 window overlay and takes
 over the update loop, so the underlying scene is frozen while you cheat.
 
@@ -81,7 +81,7 @@ game remaps RPG Maker's logical controls.)
 | **World / Teleport** | **Teleport to any map** (full map list) · Save current position · Load saved position |
 | **Toggles** | **God Mode** (party takes no damage / can't die) · **No Clip** (walk through walls) · **Game Speed** 1–4× · **Battle Speed** 1–4× |
 | **Switches & Variables** | Browse & toggle switches · Browse & edit variables |
-| **Custom Scripts** | Run `asac.q.rb` / `asac.w.rb` / `asac.e.rb` · Reload them |
+| **Custom Scripts** | Run `rmvc.q.rb` / `rmvc.w.rb` / `rmvc.e.rb` · Reload them |
 | **Save** | Save game to slot 2 |
 
 In list editors (items, spawner, variables, stats): **→ / Enter** increases,
@@ -91,12 +91,12 @@ Toggle cheats apply continuously even when the menu is closed. Game/Battle speed
 work by scaling the engine frame rate (Battle Speed only ramps up inside
 battles); they reset to normal when set back to 1×.
 
-### Custom scripts (`asac.*.rb`)
+### Custom scripts (`rmvc.*.rb`)
 
-Drop `asac.q.rb`, `asac.w.rb`, or `asac.e.rb` in the **game root folder**. The
+Drop `rmvc.q.rb`, `rmvc.w.rb`, or `rmvc.e.rb` in the **game root folder**. The
 matching menu entry `eval`s the file in the cheat context (so `$game_party`,
-`$game_map`, etc. are available). Use **Reload** after editing. A runtime error
-in one of these scripts can crash the game.
+`$game_map`, etc. are available). Use **Reload** after editing. Errors in these
+scripts are caught and shown in the feedback banner instead of crashing.
 
 ## Project layout
 
@@ -105,13 +105,13 @@ main.go                  Go patcher (decrypt → unpack → inject → repack)
 ruby/rgss_decrypter.rb   pure-Ruby RGSSAD v1/v3 archive extractor
 ruby/scripts_packer.rb   pure-Ruby Scripts.rvdata2 (un)packer (Marshal + zlib)
 cheat/01_cheat_windows.rb  RGSS3 window classes (help banner, command + list windows)
-cheat/02_ascheater.rb      AsCheater module: CTRL+C toggle, menu engine, cheats
+cheat/02_rmvc.rb            RMVC module: CTRL+C toggle, menu engine, cheats
 cheat/03_cheat_hooks.rb    persistent class hooks (god mode, no-clip)
 build.bat / build.sh     build the patcher
 ```
 
 The `cheat/*.rb` files are concatenated (in lexical order) and embedded into the
-patcher, so adding a `cheat/03_*.rb` file extends the injected payload.
+patcher, so adding a `cheat/04_*.rb` file extends the injected payload.
 
 ## Notes & limitations
 

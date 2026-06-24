@@ -1,13 +1,13 @@
 # =============================================================================
-# RPG Maker VX Ace Cheat Toolkit - AsCheater module
+# RPG Maker VX Ace Cheat Toolkit - RMVC module
 # -----------------------------------------------------------------------------
-# Injected at the top of Scripts/Scene_Base.rb. A single call `AsCheater.update`
-# is inserted at the start of Scene_Base#update.
+# RMVC = RPG Maker VX Cheat. Injected at the top of Scripts/Scene_Base.rb; a
+# single call `RMVC.update` is inserted at the start of Scene_Base#update.
 #
-# Press CTRL + C in game to open the cheat menu. While it is open, AsCheater
-# runs its own modal loop (Graphics.update / Input.update), so the underlying
-# scene is frozen and the menu overlays on top. Navigate with the arrow keys,
-# confirm with Enter / Z / Space, and go back / close with Esc.
+# Press CTRL + C in game to open the cheat menu. While it is open, RMVC runs its
+# own modal loop (Graphics.update / Input.update), so the underlying scene is
+# frozen and the menu overlays on top. Navigate with the arrow keys, confirm
+# with Enter / Z / Space, and go back / close with Esc.
 #
 # The menu is driven directly from physical key state (GetKeyboardState), so it
 # works even when a game remaps RPG Maker's logical Input keys.
@@ -16,7 +16,7 @@
 # 03_cheat_hooks.rb and apply continuously, even when the menu is closed.
 # =============================================================================
 
-module AsCheater
+module RMVC
   # Bit set in a GetKeyboardState entry when the key is held (0x80).
   DOWN_MASK = (0x8 << 0x04)
 
@@ -43,7 +43,9 @@ module AsCheater
     right:   [VK_RIGHT],
   }
 
-  LOADABLE_ASAC_INDEXES = %w[q w e]
+  # Custom user-script slots: drop rmvc.q.rb / rmvc.w.rb / rmvc.e.rb in the game
+  # root folder and run them from the "Custom Scripts" menu.
+  USER_SCRIPT_SLOTS = %w[q w e]
   LIST_CAP = 256       # cap rows to keep window bitmaps within texture limits
   FLASH_FRAMES = 150   # how long feedback toasts stay visible
 
@@ -65,7 +67,7 @@ module AsCheater
   @saved_map_id = -1
   @saved_x      = 0
   @saved_y      = 0
-  @loaded_asac_files = {}
+  @user_scripts = {}
 
   # Persistent toggle state (read by the class hooks in 03_cheat_hooks.rb).
   @god_mode = false
@@ -119,6 +121,10 @@ module AsCheater
     !$game_party.nil?
   end
 
+  def self.in_battle?
+    !$game_party.nil? && $game_party.in_battle
+  end
+
   def self.onoff(flag)
     flag ? "ON" : "OFF"
   end
@@ -150,7 +156,7 @@ module AsCheater
   def self.apply_persistent_effects
     @base_frame_rate ||= Graphics.frame_rate
     mult = @speed_mult
-    if $game_party && $game_party.in_battle && @battle_speed_mult > mult
+    if in_battle? && @battle_speed_mult > mult
       mult = @battle_speed_mult
     end
     desired = @base_frame_rate * mult
@@ -170,7 +176,7 @@ module AsCheater
     @flash_timer = 0
     @help = Window_CheatHelp.new(0, 0, Graphics.width)
     @stack = []
-    push_command_page("Cheat Menu", method(:root_commands))
+    push_command_page("RMVC Cheat Menu", method(:root_commands))
   end
 
   def self.close_menu
@@ -259,7 +265,11 @@ module AsCheater
       Sound.play_cancel
       pop_page
     elsif menu_confirm?
-      dispatch(window.current_symbol)
+      if window.current_item_enabled?
+        dispatch(window.current_symbol)
+      else
+        Sound.play_buzzer # disabled command (e.g. Battle out of combat)
+      end
     end
   end
 
@@ -297,11 +307,11 @@ module AsCheater
     [
       ["Party & Stats",            :menu_party],
       ["Gold & Items",             :menu_items],
-      ["Battle",                   :menu_battle],
+      ["Battle",                   :menu_battle, in_battle?], # disabled out of battle
       ["World / Teleport",         :menu_world],
       ["Toggles (God/Clip/Speed)", :menu_toggles],
       ["Switches & Variables",     :menu_data],
-      ["Custom Scripts (asac)",    :menu_scripts],
+      ["Custom Scripts (rmvc)",    :menu_scripts],
       ["Save game to slot 2",      :save],
       ["Close",                    :close],
     ]
@@ -373,10 +383,10 @@ module AsCheater
 
   def self.script_menu_commands
     [
-      ["Run asac.q.rb",      :asac_q],
-      ["Run asac.w.rb",      :asac_w],
-      ["Run asac.e.rb",      :asac_e],
-      ["Reload asac.*.rb",   :asac_reload],
+      ["Run rmvc.q.rb",      :user_q],
+      ["Run rmvc.w.rb",      :user_w],
+      ["Run rmvc.e.rb",      :user_e],
+      ["Reload rmvc.*.rb",   :user_reload],
       ["Back",               :back],
     ]
   end
@@ -458,19 +468,19 @@ module AsCheater
       refresh_current_command_page
       flash("Battle Speed #{@battle_speed_mult}x")
 
-    when :asac_q then flash(eval_asac_file("q"), @loaded_asac_files["q"] ? true : false)
-    when :asac_w then flash(eval_asac_file("w"), @loaded_asac_files["w"] ? true : false)
-    when :asac_e then flash(eval_asac_file("e"), @loaded_asac_files["e"] ? true : false)
-    when :asac_reload
-      load_asac_files
-      flash("Reloaded #{@loaded_asac_files.size} asac script(s)")
+    when :user_q then flash(run_user_script("q"), @user_scripts["q"] ? true : false)
+    when :user_w then flash(run_user_script("w"), @user_scripts["w"] ? true : false)
+    when :user_e then flash(run_user_script("e"), @user_scripts["e"] ? true : false)
+    when :user_reload
+      load_user_scripts
+      flash("Reloaded #{@user_scripts.size} user script(s)")
 
     else Sound.play_buzzer
     end
   end
 
   def self.require_battle
-    return true if $game_party.in_battle
+    return true if in_battle?
     flash("Not in battle", false)
     false
   end
@@ -669,24 +679,24 @@ module AsCheater
     "Saved game to slot 2"
   end
 
-  # ---- custom asac scripts -------------------------------------------------
-  def self.load_asac_files
-    @loaded_asac_files = {}
-    LOADABLE_ASAC_INDEXES.each do |index|
-      filename = "asac.#{index}.rb"
-      @loaded_asac_files[index] = File.read(filename) if File.exist?(filename)
+  # ---- custom user scripts -------------------------------------------------
+  def self.load_user_scripts
+    @user_scripts = {}
+    USER_SCRIPT_SLOTS.each do |slot|
+      filename = "rmvc.#{slot}.rb"
+      @user_scripts[slot] = File.read(filename) if File.exist?(filename)
     end
   end
 
-  def self.eval_asac_file(index)
-    unless @loaded_asac_files[index]
-      return "asac.#{index}.rb not found"
+  def self.run_user_script(slot)
+    unless @user_scripts[slot]
+      return "rmvc.#{slot}.rb not found"
     end
-    eval(@loaded_asac_files[index])
-    "Ran asac.#{index}.rb"
+    eval(@user_scripts[slot])
+    "Ran rmvc.#{slot}.rb"
   rescue StandardError => e
-    "asac.#{index}.rb error: #{e.message}"
+    "rmvc.#{slot}.rb error: #{e.message}"
   end
 end
 
-AsCheater.load_asac_files
+RMVC.load_user_scripts
