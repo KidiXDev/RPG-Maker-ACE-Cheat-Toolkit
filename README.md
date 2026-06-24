@@ -6,20 +6,24 @@ repacks it. In game, press **CTRL + C** to open a navigable cheat menu — no
 memorizing hotkeys.
 
 This is a clean rewrite of [allape/RPG-Maker-ACE-Cheater](https://github.com/allape/RPG-Maker-ACE-Cheater):
-same script-injection approach, but with a GUI instead of hotkeys and with the
-archive decryption / script (un)packing reimplemented in pure Ruby (no
-third-party binaries).
+same script-injection approach, but with an in-game GUI instead of hotkeys, and
+with the archive decryption and `Scripts.rvdata2` patching reimplemented in pure
+Go — so the patcher is a single executable with no runtime dependencies (no
+third-party binaries, no Ruby on PATH).
 
 ## How it works
 
-1. **Decrypt** `Game.rgss3a` to loose files — pure-Ruby RGSSAD reader
-   (`ruby/rgss_decrypter.rb`). The archive is renamed to `Game.rgss3a~` so the
-   game runs from the extracted files.
-2. **Unpack** `Data/Scripts.rvdata2` into editable `.rb` files — pure-Ruby
-   Marshal+zlib (un)packer (`ruby/scripts_packer.rb`).
-3. **Inject** the cheat module (`cheat/*.rb`) at the top of `Scene_Base.rb` and
-   add `RMVC.update` at the start of `Scene_Base#update`.
-4. **Repack** the scripts back into `Data/Scripts.rvdata2`.
+The patcher is a single, dependency-free `.exe` — everything below is done in
+pure Go, in-memory:
+
+1. **Decrypt** `Game.rgss3a` to loose files (Go RGSSAD v1/v3 extractor). The
+   archive is renamed to `Game.rgss3a~` so the game runs from the extracted
+   files.
+2. **Patch** the Scene_Base script inside `Data/Scripts.rvdata2`: the Marshal
+   stream is walked to find Scene_Base's deflated code, which is inflated, the
+   cheat module (`cheat/*.rb`) is prepended and `RMVC.update` inserted at the
+   start of `Scene_Base#update`, then re-deflated and spliced back. Every other
+   script is preserved byte-for-byte.
 
 At runtime, `RMVC.update` watches for **CTRL + C** (via Win32
 `GetKeyboardState`). When pressed it opens a modal RGSS3 window overlay and takes
@@ -27,10 +31,11 @@ over the update loop, so the underlying scene is frozen while you cheat.
 
 ## Requirements
 
-- **To run the patcher:** Windows + [Ruby](https://rubyinstaller.org/) on your
-  `PATH` (`ruby -v` should work). The patcher shells out to the embedded Ruby
-  tools.
+- **To run the patcher:** Windows. Nothing else — no Ruby, no external tools.
 - **To build the patcher:** [Go](https://go.dev/) 1.21+.
+
+> The only Ruby in this project is `cheat/*.rb`, which is embedded into the patcher
+> and runs **inside the game's own RGSS runtime** — never on the user's machine.
 
 ## Build
 
@@ -101,13 +106,12 @@ scripts are caught and shown in the feedback banner instead of crashing.
 ## Project layout
 
 ```
-main.go                  Go patcher (decrypt → unpack → inject → repack)
-ruby/rgss_decrypter.rb   pure-Ruby RGSSAD v1/v3 archive extractor
-ruby/scripts_packer.rb   pure-Ruby Scripts.rvdata2 (un)packer (Marshal + zlib)
+main.go                    Go patcher CLI (decrypt → patch → write)
+rgss.go                    Go RGSSAD extractor + Scripts.rvdata2 Marshal/zlib patcher
 cheat/01_cheat_windows.rb  RGSS3 window classes (help banner, command + list windows)
-cheat/02_rmvc.rb            RMVC module: CTRL+C toggle, menu engine, cheats
+cheat/02_rmvc.rb           RMVC module: CTRL+C toggle, menu engine, cheats
 cheat/03_cheat_hooks.rb    persistent class hooks (god mode, no-clip)
-build.bat / build.sh     build the patcher
+build.bat / build.sh       build the patcher
 ```
 
 The `cheat/*.rb` files are concatenated (in lexical order) and embedded into the
