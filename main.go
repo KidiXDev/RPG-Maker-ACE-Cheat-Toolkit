@@ -14,6 +14,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -82,6 +83,33 @@ func normalizeCRLF(data []byte) []byte {
 	return []byte(s)
 }
 
+// bellSkipper is a custom writer that ignores the terminal bell (ASCII 7)
+// to prevent the annoying warning sound on Windows during navigation.
+type bellSkipper struct {
+	io.Writer
+}
+
+func (b *bellSkipper) Write(data []byte) (int, error) {
+	var filtered []byte
+	for _, c := range data {
+		if c != 7 { // 7 is the bell character (ASCII 7)
+			filtered = append(filtered, c)
+		}
+	}
+	if len(filtered) == 0 {
+		return len(data), nil
+	}
+	_, err := b.Writer.Write(filtered)
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
+}
+
+func (b *bellSkipper) Close() error {
+	return nil
+}
+
 func main() {
 	log.SetFlags(0)
 
@@ -123,12 +151,13 @@ func main() {
 		}
 	} else {
 		prompt := promptui.Select{
-			Label: "Select an operation",
-			Items: []string{
+			Label:  "Select an operation",
+			Items:  []string{
 				"Patch this game (default)",
 				"Restore game",
 				"Re-patch (restore then patch)",
 			},
+			Stdout: &bellSkipper{Writer: os.Stdout},
 		}
 		i, _, err := prompt.Run()
 		if err != nil {
