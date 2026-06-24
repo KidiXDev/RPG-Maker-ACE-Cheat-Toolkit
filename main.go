@@ -21,8 +21,10 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/manifoldco/promptui"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -36,16 +38,78 @@ const (
 //go:embed cheat/*.rb
 var cheatFiles embed.FS
 
+const (
+	colorReset  = "\x1b[0m"
+	colorBold   = "\x1b[1m"
+	colorCyan   = "\x1b[36m"
+	colorGreen  = "\x1b[32m"
+	colorGray   = "\x1b[90m"
+	colorYellow = "\x1b[33m"
+	colorRed    = "\x1b[31m"
+)
+
+var suppressLogging bool
+
+func init() {
+	// Enable Virtual Terminal Processing on Windows to support ANSI escape codes.
+	stdout := windows.Handle(os.Stdout.Fd())
+	var mode uint32
+	if err := windows.GetConsoleMode(stdout, &mode); err == nil {
+		windows.SetConsoleMode(stdout, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+	}
+	stderr := windows.Handle(os.Stderr.Fd())
+	if err := windows.GetConsoleMode(stderr, &mode); err == nil {
+		windows.SetConsoleMode(stderr, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+	}
+}
+
 func pause() {
-	log.Println("Press [Enter] to exit...")
+	log.Println(colorGray + "Press [Enter] to exit..." + colorReset)
 	var input string
 	_, _ = fmt.Scanln(&input)
 }
 
-func Println(args ...any) { log.Println(args...) }
+func Println(args ...any) {
+	if suppressLogging {
+		return
+	}
+	if len(args) == 0 {
+		log.Println()
+		return
+	}
+
+	// Convert args to string to check keywords and apply dynamic colors/prefixes
+	firstStr, ok := args[0].(string)
+	if ok {
+		switch {
+		case strings.HasPrefix(firstStr, "Decrypting"),
+			strings.HasPrefix(firstStr, "Patching"),
+			strings.HasPrefix(firstStr, "Renaming"),
+			strings.HasPrefix(firstStr, "Target game folder"):
+			msg := fmt.Sprintln(args...)
+			log.Print(colorCyan + "[*] " + colorReset + msg)
+			return
+
+		case strings.HasPrefix(firstStr, "Extracted"),
+			strings.HasPrefix(firstStr, "Patched game"),
+			strings.HasPrefix(firstStr, "Restored game"):
+			msg := fmt.Sprintln(args...)
+			log.Print(colorGreen + "[+] " + colorReset + msg)
+			return
+
+		case strings.HasPrefix(firstStr, "No backup"):
+			msg := fmt.Sprintln(args...)
+			log.Print(colorYellow + "[!] " + colorReset + msg)
+			return
+		}
+	}
+
+	log.Println(args...)
+}
 
 func Fatalln(args ...any) {
-	log.Println(args...)
+	msg := fmt.Sprint(args...)
+	log.Println(colorRed + "[ERROR] " + colorReset + msg)
 	pause()
 	os.Exit(1)
 }
@@ -110,6 +174,79 @@ func (b *bellSkipper) Close() error {
 	return nil
 }
 
+func animateProgress(label string, minimumDuration time.Duration, task func() error) error {
+	suppressLogging = true
+	defer func() { suppressLogging = false }()
+
+	errChan := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		errChan <- task()
+	}()
+
+	spinnerFrames := []string{"|", "/", "-", "\\"}
+	frameIdx := 0
+
+	ticker := time.NewTicker(40 * time.Millisecond) // Faster ticks (25 FPS) for smoother animation
+	defer ticker.Stop()
+
+	var taskErr error
+	taskFinished := false
+
+	for {
+		select {
+		case err := <-errChan:
+			taskErr = err
+			taskFinished = true
+
+		case <-ticker.C:
+			elapsed := time.Since(start)
+			frameIdx = (frameIdx + 1) % len(spinnerFrames)
+			spinner := spinnerFrames[frameIdx]
+
+			// Calculate progress percentage linearly based on elapsed time
+			percent := (float64(elapsed) / float64(minimumDuration)) * 100.0
+
+			if taskFinished {
+				if percent >= 100.0 {
+					// Task is finished and minimum duration has elapsed
+					drawProgressBar(label, 100.0, "+", colorGreen)
+					fmt.Println()
+					return taskErr
+				}
+				drawProgressBar(label, percent, spinner, colorCyan)
+			} else {
+				// Task is still running; cap progress at 95% until it completes
+				if percent >= 95.0 {
+					percent = 95.0
+				}
+				drawProgressBar(label, percent, spinner, colorCyan)
+			}
+		}
+	}
+}
+
+func drawProgressBar(label string, percent float64, spinner string, spinnerColor string) {
+	width := 30
+	completed := int(percent / 100.0 * float64(width))
+	if completed > width {
+		completed = width
+	}
+	
+	var bar strings.Builder
+	for i := 0; i < width; i++ {
+		if i < completed {
+			bar.WriteString("█")
+		} else {
+			bar.WriteString("░")
+		}
+	}
+	
+	fmt.Printf("\r%s[*] %-30s %s[%s]%s [%s] %3.0f%%", 
+		colorReset, label+"...", spinnerColor, spinner, colorReset, bar.String(), percent)
+}
+
+
 func main() {
 	log.SetFlags(0)
 
@@ -117,13 +254,21 @@ func main() {
 		Fatalln("This program only runs on Windows")
 	}
 
-	Println("RPG Maker VX Ace Cheat Toolkit - patcher")
-	Println("In-game menu hotkey: CTRL + C")
+	Println(colorBold + colorCyan + `
+ ╔═══════════════════════════════════════════════════════════╗
+ ║        RPG Maker VX Ace Cheat Toolkit - Patcher           ║
+ ╚═══════════════════════════════════════════════════════════╝` + colorReset)
+	Println(colorGray + " In-game menu hotkey: " + colorBold + colorGreen + "CTRL + C" + colorReset)
 	Println()
 
 	root := "."
 	if len(os.Args) > 1 {
 		root = os.Args[1]
+	}
+
+	absRoot, err := filepath.Abs(root)
+	if err == nil {
+		root = absRoot
 	}
 
 	stat, err := os.Stat(root)
@@ -150,14 +295,24 @@ func main() {
 			Fatalln("Unknown operation:", os.Args[2], "(expected patch|restore|repatch)")
 		}
 	} else {
+		items := []string{
+			"Patch this game (default)",
+			"Restore game",
+			"Re-patch (restore then patch)",
+		}
+
+		templates := &promptui.SelectTemplates{
+			Label:    "{{ . | bold }}",
+			Active:   "> {{ . | cyan | bold }}",
+			Inactive: "  {{ . }}",
+			Selected: "+ {{ . | green }}",
+		}
+
 		prompt := promptui.Select{
-			Label:  "Select an operation",
-			Items:  []string{
-				"Patch this game (default)",
-				"Restore game",
-				"Re-patch (restore then patch)",
-			},
-			Stdout: &bellSkipper{Writer: os.Stdout},
+			Label:     "Select an operation",
+			Items:     items,
+			Templates: templates,
+			Stdout:    &bellSkipper{Writer: os.Stdout},
 		}
 		i, _, err := prompt.Run()
 		if err != nil {
@@ -187,12 +342,16 @@ func main() {
 func patch(root string) {
 	scriptsRvdata2 := filepath.Join(root, "Data", ScriptsRVDATA2)
 	if _, err := os.Stat(scriptsRvdata2); err != nil {
-		if err := extractArchive(root); err != nil {
+		err := animateProgress("Decrypting Game Archive", 800*time.Millisecond, func() error {
+			return extractArchive(root)
+		})
+		if err != nil {
 			Fatalln("Failed to decrypt game:", err)
 		}
+
 		src := filepath.Join(root, GameRGSS3A)
 		dst := filepath.Join(root, GameRGSS3ABackup)
-		Println("Renaming", src, "->", dst)
+		Println("Renaming", filepath.Base(src), "->", filepath.Base(dst))
 		if err := os.Rename(src, dst); err != nil {
 			Fatalln("Failed to rename", src, "to", dst, ":", err)
 		}
@@ -200,8 +359,9 @@ func patch(root string) {
 		Println("Game already extracted, skipping decryption.")
 	}
 
-	Println("Patching", ScriptsRVDATA2, "...")
-	err := patchScriptsRvdata2(scriptsRvdata2, cheatPayload(), CheatMarker, InjectionCall)
+	err := animateProgress("Patching game scripts", 600*time.Millisecond, func() error {
+		return patchScriptsRvdata2(scriptsRvdata2, cheatPayload(), CheatMarker, InjectionCall)
+	})
 	if err == errAlreadyPatched {
 		Fatalln("Game already patched.")
 	} else if err != nil {
@@ -212,26 +372,33 @@ func patch(root string) {
 }
 
 func restoreGame(root string) {
-	src := filepath.Join(root, GameRGSS3ABackup)
-	dst := filepath.Join(root, GameRGSS3A)
-	if _, err := os.Stat(src); err != nil {
-		Fatalln("No backup", src, "found, nothing to restore.")
-	}
-
-	// Remove leftover decode artifacts from older Ruby-based versions, if any.
-	for _, dir := range []string{"Scripts", "YAML"} {
-		if err := os.RemoveAll(filepath.Join(root, dir)); err != nil {
-			Fatalln("Failed to remove", dir, ":", err)
+	err := animateProgress("Restoring original game files", 800*time.Millisecond, func() error {
+		src := filepath.Join(root, GameRGSS3ABackup)
+		dst := filepath.Join(root, GameRGSS3A)
+		if _, err := os.Stat(src); err != nil {
+			return fmt.Errorf("no backup %s found, nothing to restore", src)
 		}
+
+		// Remove leftover decode artifacts from older Ruby-based versions, if any.
+		for _, dir := range []string{"Scripts", "YAML"} {
+			if err := os.RemoveAll(filepath.Join(root, dir)); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", dir, err)
+			}
+		}
+
+		scriptsRvdata2 := filepath.Join(root, "Data", ScriptsRVDATA2)
+		if err := os.Remove(scriptsRvdata2); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove %s: %w", scriptsRvdata2, err)
+		}
+
+		if err := os.Rename(src, dst); err != nil {
+			return fmt.Errorf("failed to rename %s to %s: %w", src, dst, err)
+		}
+		return nil
+	})
+	if err != nil {
+		Fatalln(err)
 	}
 
-	scriptsRvdata2 := filepath.Join(root, "Data", ScriptsRVDATA2)
-	if err := os.Remove(scriptsRvdata2); err != nil && !os.IsNotExist(err) {
-		Fatalln("Failed to remove", scriptsRvdata2, ":", err)
-	}
-
-	if err := os.Rename(src, dst); err != nil {
-		Fatalln("Failed to rename", src, "to", dst, ":", err)
-	}
 	Println("Restored game at", root)
 }
