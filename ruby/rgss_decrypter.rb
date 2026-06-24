@@ -7,7 +7,7 @@
 #
 # Supports:
 #   - v1: Game.rgssad (XP) / Game.rgss2a (VX)
-#   - v3: Game.rgss3a (VX Ace)  <-- the format BLACK SOULS uses
+#   - v3: Game.rgss3a (VX Ace)
 #
 # Usage:
 #   ruby rgss_decrypter.rb <game_root>
