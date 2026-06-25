@@ -2,13 +2,10 @@
 //
 // A standalone, dependency-free Windows CLI that installs an in-game cheat menu
 // into an RPG Maker VX Ace game. It:
-//  1. Decrypts Game.rgss3a to loose files (pure-Go RGSSAD extractor).
+//  1. Decrypts Game.rgss3a to loose files (RGSSAD extractor).
 //  2. Injects the RMVC cheat module into the Scene_Base script inside
 //     Data/Scripts.rvdata2 and inserts `RMVC.update` at the start of
-//     Scene_Base#update (pure-Go Marshal + zlib patcher).
-//
-// No external tools or runtimes are required: the only embedded assets are the
-// in-game Ruby cheat scripts, which run inside the game's own RGSS runtime.
+//     Scene_Base#update (Go-based Marshal + zlib patcher).
 package main
 
 import (
@@ -232,7 +229,7 @@ func drawProgressBar(label string, percent float64, spinner string, spinnerColor
 	if completed > width {
 		completed = width
 	}
-	
+
 	var bar strings.Builder
 	for i := 0; i < width; i++ {
 		if i < completed {
@@ -241,11 +238,10 @@ func drawProgressBar(label string, percent float64, spinner string, spinnerColor
 			bar.WriteString("░")
 		}
 	}
-	
-	fmt.Printf("\r%s[*] %-30s %s[%s]%s [%s] %3.0f%%", 
+
+	fmt.Printf("\r%s[*] %-30s %s[%s]%s [%s] %3.0f%%",
 		colorReset, label+"...", spinnerColor, spinner, colorReset, bar.String(), percent)
 }
-
 
 func main() {
 	log.SetFlags(0)

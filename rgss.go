@@ -1,9 +1,5 @@
 package main
 
-// Pure-Go reimplementation of the RGSSAD archive extractor and the
-// Scripts.rvdata2 (Marshal + zlib) patcher. This replaces the embedded Ruby
-// tools so the patcher has zero runtime dependencies (no Ruby on PATH).
-
 import (
 	"bytes"
 	"compress/zlib"

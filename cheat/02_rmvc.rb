@@ -63,8 +63,17 @@ module RMVC
   SPEED_MULTIPLIER_MAX = 4
   MULTIPLIER_MAX = 100
 
+  # Config file in the game root folder (persists teleport slots between runs).
+  CONFIG_FILE = "rmvc.cfg"
+
   # noinspection RubyResolve
   GetKeyboardState = Win32API.new("user32.dll", "GetKeyboardState", "I", "I")
+  # GetAsyncKeyState reads the real-time physical key state, independent of the
+  # thread's message queue. GetKeyboardState only updates as keyboard messages
+  # are pumped, so on heavy frames it lags; using async state for the CTRL + C
+  # toggle makes the menu open/close respond immediately.
+  # noinspection RubyResolve
+  GetAsyncKeyState = Win32API.new("user32.dll", "GetAsyncKeyState", "I", "I")
 
   # noinspection RubyResolve
   @key_state     = DL::CPtr.new(DL.malloc(256), 256)
@@ -107,9 +116,19 @@ module RMVC
     key_down?(VK_LSHIFT) || key_down?(VK_RSHIFT)
   end
 
-  def self.ctrl_c_down?
+  # Snapshot the full keyboard into @key_state for the menu navigation/typing
+  # helpers (key_down? / scan_typing). Only needed while the menu is open.
+  def self.poll_keyboard_state
     GetKeyboardState.call(@key_state.to_i)
-    key_down?(VK_CONTROL) && key_down?(VK_C)
+  end
+
+  # Real-time physical state of a single key (high bit of GetAsyncKeyState).
+  def self.async_down?(vk)
+    (GetAsyncKeyState.call(vk) & 0x8000) != 0
+  end
+
+  def self.ctrl_c_down?
+    async_down?(VK_CONTROL) && async_down?(VK_C)
   end
 
   def self.toggle_pressed?
@@ -324,6 +343,7 @@ module RMVC
   def self.update_menu
     page = @stack.last
     return unless page
+    poll_keyboard_state
     refresh_menu_input
     update_search_field(page) if page[:type] == :search_list
     page[:window].update
@@ -986,7 +1006,14 @@ module RMVC
   def self.set_tp_slot(i)
     @tp_slots[i] = { map_id: $game_map.map_id, x: $game_player.x, y: $game_player.y,
                      name: map_display_name($game_map.map_id) }
+    save_config
     "Saved slot #{i + 1}: #{tp_slot_label(i)}"
+  end
+
+  def self.delete_tp_slot(i)
+    @tp_slots.delete(i)
+    save_config
+    "Cleared slot #{i + 1}"
   end
 
   # Enter: teleport to a used slot (with confirm); save into an empty one.
@@ -1013,7 +1040,7 @@ module RMVC
   # Left: clear a used slot, with confirm.
   def self.tp_slot_confirm_clear(i)
     if @tp_slots[i]
-      push_confirm("Clear slot #{i + 1}?", proc { @tp_slots.delete(i); "Cleared slot #{i + 1}" })
+      push_confirm("Clear slot #{i + 1}?", proc { delete_tp_slot(i) })
       nil
     else
       Sound.play_buzzer
@@ -1062,6 +1089,38 @@ module RMVC
   rescue StandardError => e
     "rmvc.#{slot}.rb error: #{e.message}"
   end
+
+  # ---- persistent config (rmvc.cfg) ----------------------------------------
+  # Teleport slots are written to a small Marshal file in the game root so they
+  # survive between play sessions. Reads/writes are wrapped so a missing,
+  # corrupt, or read-only file never breaks the game or the menu.
+  def self.load_config
+    @tp_slots = {}
+    return unless File.exist?(CONFIG_FILE)
+    raw = File.open(CONFIG_FILE, "rb") { |f| f.read }
+    data = Marshal.load(raw)
+    slots = data.is_a?(Hash) ? data[:tp_slots] : nil
+    return unless slots.is_a?(Hash)
+    slots.each do |key, value|
+      next unless value.is_a?(Hash) && value[:map_id]
+      @tp_slots[key.to_i] = {
+        map_id: value[:map_id].to_i,
+        x:      value[:x].to_i,
+        y:      value[:y].to_i,
+        name:   value[:name].to_s,
+      }
+    end
+  rescue StandardError
+    @tp_slots = {} # ignore a corrupt/unreadable config
+  end
+
+  def self.save_config
+    data = { tp_slots: @tp_slots }
+    File.open(CONFIG_FILE, "wb") { |f| f.write(Marshal.dump(data)) }
+  rescue StandardError
+    # ignore write failures (e.g. read-only folder); slots stay in-session only
+  end
 end
 
 RMVC.load_user_scripts
+RMVC.load_config
