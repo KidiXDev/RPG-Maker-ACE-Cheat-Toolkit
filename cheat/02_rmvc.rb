@@ -378,30 +378,35 @@ module RMVC
   end
 
   def self.adjust_command_value(symbol, delta)
+    step = signed_step_amount(delta)
     case symbol
     when :tog_speed
-      @speed_mult = adjust_speed_multiplier(@speed_mult, delta)
+      @speed_mult = adjust_speed_multiplier(@speed_mult, step)
       refresh_current_command_page
       flash("Game Speed #{@speed_mult}x")
       true
     when :tog_bspeed
-      @battle_speed_mult = adjust_speed_multiplier(@battle_speed_mult, delta)
+      @battle_speed_mult = adjust_speed_multiplier(@battle_speed_mult, step)
       refresh_current_command_page
       flash("Battle Speed #{@battle_speed_mult}x")
       true
     when :tog_damage
-      @damage_mult = adjust_multiplier(@damage_mult, delta)
+      @damage_mult = adjust_multiplier(@damage_mult, step)
       refresh_current_command_page
       flash("Damage Multiplier #{@damage_mult}x")
       true
     when :tog_exp
-      @exp_mult = adjust_multiplier(@exp_mult, delta)
+      @exp_mult = adjust_multiplier(@exp_mult, step)
       refresh_current_command_page
       flash("EXP Multiplier #{@exp_mult}x")
       true
     else
       false
     end
+  end
+
+  def self.signed_step_amount(direction)
+    direction * step_amount
   end
 
   def self.adjust_speed_multiplier(value, delta)
@@ -581,7 +586,7 @@ module RMVC
     when :menu_items    then push_command_page("Gold & Items", method(:items_menu_commands))
     when :menu_battle   then push_command_page("Battle", method(:battle_menu_commands))
     when :menu_world    then push_command_page("World / Teleport", method(:world_menu_commands))
-    when :menu_toggles  then push_command_page("Toggles", method(:toggle_menu_commands), "Up/Down: Move   Right/Enter: +   Left: -   Hold: repeat   Esc: Back")
+    when :menu_toggles  then push_command_page("Toggles", method(:toggle_menu_commands), "Up/Down: Move   Right/Enter: +   Left: -   Shift: x10   Esc: Back")
     when :menu_data     then push_command_page("Switches & Variables", method(:data_menu_commands))
     when :menu_scripts  then push_command_page("Custom Scripts", method(:script_menu_commands))
     when :spawn_menu    then push_command_page("Item Spawner", method(:spawn_menu_commands))
@@ -637,22 +642,8 @@ module RMVC
       @no_clip = !@no_clip
       refresh_current_command_page
       flash("No Clip #{onoff(@no_clip)}")
-    when :tog_speed
-      @speed_mult = @speed_mult >= SPEED_MULTIPLIER_MAX ? 1 : @speed_mult + 1
-      refresh_current_command_page
-      flash("Game Speed #{@speed_mult}x")
-    when :tog_bspeed
-      @battle_speed_mult = @battle_speed_mult >= SPEED_MULTIPLIER_MAX ? 1 : @battle_speed_mult + 1
-      refresh_current_command_page
-      flash("Battle Speed #{@battle_speed_mult}x")
-    when :tog_damage
-      @damage_mult = adjust_multiplier(@damage_mult, 1)
-      refresh_current_command_page
-      flash("Damage Multiplier #{@damage_mult}x")
-    when :tog_exp
-      @exp_mult = adjust_multiplier(@exp_mult, 1)
-      refresh_current_command_page
-      flash("EXP Multiplier #{@exp_mult}x")
+    when :tog_speed, :tog_bspeed, :tog_damage, :tog_exp
+      adjust_command_value(symbol, 1)
 
     when :user_q then flash(run_user_script("q"), @user_scripts["q"] ? true : false)
     when :user_w then flash(run_user_script("w"), @user_scripts["w"] ? true : false)

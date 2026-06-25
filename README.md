@@ -89,9 +89,10 @@ game remaps RPG Maker's logical controls.)
 In list editors (items, spawner, variables, stats): **→ / Enter** increases,
 **←** decreases, hold **← / →** to repeat, and hold **Shift** for the larger
 step (×10, or ×100 for variables).
-On the toggles page, speed and multiplier rows also support **← / →** with
-hold-to-repeat. Search lists use **Esc** to clear/back so letters such as `x`
-can be typed even if the game maps them to cancel.
+On the toggles page, speed and multiplier rows also support **← / →**,
+hold-to-repeat, and **Shift** for larger steps. Search lists use **Esc** to
+clear/back so letters such as `x` can be typed even if the game maps them to
+cancel.
 
 Toggle cheats apply continuously even when the menu is closed. Game/Battle speed
 work by scaling the engine frame rate (Battle Speed only ramps up inside
