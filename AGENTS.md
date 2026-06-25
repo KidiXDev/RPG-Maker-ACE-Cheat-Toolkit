@@ -12,11 +12,11 @@ This repository builds a Windows patcher for RPG Maker VX Ace games and embeds R
 
 ## Build, Test, and Development Commands
 
-- `rtk go build .` checks that the Go package compiles.
-- `rtk build.bat` builds the Windows executable on Windows.
-- `rtk ./build.sh` cross-compiles the Windows executable from Unix-like shells.
-- `rtk gofmt -w main.go rgss.go` formats touched Go files.
-- `rtk go test ./...` runs all Go tests.
+- `go build .` checks that the Go package compiles.
+- `build.bat` builds the Windows executable on Windows.
+- `./build.sh` cross-compiles the Windows executable from Unix-like shells.
+- `gofmt -w main.go rgss.go` formats touched Go files.
+- `go test ./...` runs all Go tests.
 
 Avoid committing regenerated binaries unless the change intentionally updates the distributed patcher.
 
@@ -31,12 +31,6 @@ Ruby files in `cheat/` run inside the RGSS3 runtime, not standalone Ruby. Preser
 There is currently no committed test suite. For Go changes, run `rtk go test ./...` and `rtk go build .`. For patching logic, validate against a disposable VX Ace game folder: patch, launch, open the cheat menu with `CTRL + C`, then restore and confirm the original archive is recovered.
 
 When adding tests, prefer table-driven Go tests named `*_test.go`. Use small fixtures and avoid copyrighted game data.
-
-## Commit & Pull Request Guidelines
-
-Recent history uses very short messages, but prefer clear imperative summaries such as `fix script reinjection` or `add teleport menu search`. Keep commits focused.
-
-Pull requests should include a short description, validation commands, and manual game-testing notes when runtime behavior changes. Include screenshots only for visible cheat menu or documentation changes.
 
 ## Security & Configuration Tips
 
