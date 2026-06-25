@@ -85,10 +85,12 @@ module RMVC
   @no_clip  = false
   @speed_mult = 1
   @battle_speed_mult = 1
+  @damage_mult = 1
+  @exp_mult = 1
   @base_frame_rate = nil
 
   class << self
-    attr_reader :god_mode, :no_clip
+    attr_reader :god_mode, :no_clip, :damage_mult, :exp_mult
   end
 
   # ---- keyboard helpers ----------------------------------------------------
@@ -182,8 +184,8 @@ module RMVC
     Input.update
   end
 
-  # Continuously-applied effects (speed hack). God mode / no-clip are handled by
-  # the class hooks, which simply read @god_mode / @no_clip.
+  # Continuously-applied effects. Class hooks read these toggle values, and god
+  # mode also gets a small upkeep pass here in case a custom script bypasses them.
   def self.apply_persistent_effects
     @base_frame_rate ||= Graphics.frame_rate
     mult = @speed_mult
@@ -192,8 +194,17 @@ module RMVC
     end
     desired = @base_frame_rate * mult
     Graphics.frame_rate = desired if Graphics.frame_rate != desired
+    keep_party_alive if @god_mode
   rescue StandardError
     # never let a persistent effect crash the game loop
+  end
+
+  def self.keep_party_alive
+    return unless in_game?
+    $game_party.all_members.each do |actor|
+      actor.hp = 1 if actor.hp <= 0
+      actor.remove_state(actor.death_state_id) if actor.respond_to?(:death_state_id) && actor.state?(actor.death_state_id)
+    end
   end
 
   # ---- menu lifecycle ------------------------------------------------------
@@ -470,6 +481,8 @@ module RMVC
       ["No Clip: #{onoff(@no_clip)}",              :tog_clip],
       ["Game Speed: #{@speed_mult}x",              :tog_speed],
       ["Battle Speed: #{@battle_speed_mult}x",     :tog_bspeed],
+      ["Damage Multiplier: #{@damage_mult}x",      :tog_damage],
+      ["EXP Multiplier: #{@exp_mult}x",            :tog_exp],
       ["Back",                                     :back],
     ]
   end
@@ -578,6 +591,14 @@ module RMVC
       @battle_speed_mult = @battle_speed_mult >= 4 ? 1 : @battle_speed_mult + 1
       refresh_current_command_page
       flash("Battle Speed #{@battle_speed_mult}x")
+    when :tog_damage
+      @damage_mult = @damage_mult >= 4 ? 1 : @damage_mult + 1
+      refresh_current_command_page
+      flash("Damage Multiplier #{@damage_mult}x")
+    when :tog_exp
+      @exp_mult = @exp_mult >= 4 ? 1 : @exp_mult + 1
+      refresh_current_command_page
+      flash("EXP Multiplier #{@exp_mult}x")
 
     when :user_q then flash(run_user_script("q"), @user_scripts["q"] ? true : false)
     when :user_w then flash(run_user_script("w"), @user_scripts["w"] ? true : false)

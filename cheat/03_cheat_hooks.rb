@@ -13,6 +13,17 @@
 
 # ---- God Mode: party members take no damage and cannot die ------------------
 class Game_Battler
+  if method_defined?(:make_damage_value)
+    alias rmvc_damage_make_damage_value make_damage_value
+    def make_damage_value(user, item)
+      rmvc_damage_make_damage_value(user, item)
+      if RMVC.damage_mult > 1 && user.respond_to?(:actor?) && user.actor? &&
+         respond_to?(:enemy?) && enemy? && @result.hp_damage > 0
+        @result.hp_damage *= RMVC.damage_mult
+      end
+    end
+  end
+
   if method_defined?(:execute_damage)
     alias rmvc_god_execute_damage execute_damage
     def execute_damage(user)
@@ -34,11 +45,41 @@ class Game_Battler
 end
 
 class Game_BattlerBase
+  if method_defined?(:hp=)
+    alias rmvc_god_hp= hp=
+    def hp=(value)
+      if RMVC.god_mode && respond_to?(:actor?) && actor? && value <= 0
+        value = 1
+      end
+      self.rmvc_god_hp = value
+    end
+  end
+
   if method_defined?(:die)
     alias rmvc_god_die die
     def die
       return if RMVC.god_mode && respond_to?(:actor?) && actor?
       rmvc_god_die
+    end
+  end
+end
+
+class Game_Party
+  if method_defined?(:all_dead?)
+    alias rmvc_god_all_dead? all_dead?
+    def all_dead?
+      return false if RMVC.god_mode
+      rmvc_god_all_dead?
+    end
+  end
+end
+
+class Game_Actor
+  if method_defined?(:gain_exp)
+    alias rmvc_exp_gain_exp gain_exp
+    def gain_exp(exp)
+      exp *= RMVC.exp_mult if RMVC.exp_mult > 1 && exp > 0
+      rmvc_exp_gain_exp(exp)
     end
   end
 end
