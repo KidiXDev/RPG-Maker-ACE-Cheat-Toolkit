@@ -92,3 +92,17 @@ class Game_Player
     rmvc_clip_passable?(x, y, d)
   end
 end
+
+# ---- No Encounters: suppress random battles ---------------------------------
+# encounter? gates whether a step can trigger a random battle, so returning
+# false disables them while leaving event-forced battles (Battle Processing) and
+# the encounter step counter untouched.
+class Game_Player
+  if method_defined?(:encounter?)
+    alias rmvc_noenc_encounter? encounter?
+    def encounter?
+      return false if RMVC.no_encounters
+      rmvc_noenc_encounter?
+    end
+  end
+end

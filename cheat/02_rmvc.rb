@@ -80,14 +80,14 @@ module RMVC
   @flash_text = ""
   @flash_timer = 0
 
-  @saved_map_id = -1
-  @saved_x      = 0
-  @saved_y      = 0
+  @tp_slots     = {} # index => { map_id:, x:, y:, name: } (Teleportation Slots)
+  @confirm_yes  = nil # callback fired when a Yes/No confirm page is accepted
   @user_scripts = {}
 
   # Persistent toggle state (read by the class hooks in 03_cheat_hooks.rb).
   @god_mode = false
   @no_clip  = false
+  @no_encounters = false
   @speed_mult = 1
   @battle_speed_mult = 1
   @damage_mult = 1
@@ -95,7 +95,7 @@ module RMVC
   @base_frame_rate = nil
 
   class << self
-    attr_reader :god_mode, :no_clip, :damage_mult, :exp_mult
+    attr_reader :god_mode, :no_clip, :no_encounters, :damage_mult, :exp_mult
   end
 
   # ---- keyboard helpers ----------------------------------------------------
@@ -502,6 +502,8 @@ module RMVC
       ["Heal & revive all party", :party_heal],
       ["Set all party HP to 1",   :party_hp1],
       ["Stat editor",             :stat_pick],
+      ["State editor (buffs/debuffs)", :state_pick],
+      ["Skill editor / spawner",  :skill_pick],
       ["Back",                    :back],
     ]
   end
@@ -528,8 +530,7 @@ module RMVC
   def self.world_menu_commands
     [
       ["Teleport to map...",     :map_list],
-      ["Save current position",  :tp_save],
-      ["Load saved position",    :tp_load],
+      ["Teleportation slots...", :tp_slots],
       ["Back",                   :back],
     ]
   end
@@ -538,6 +539,7 @@ module RMVC
     [
       ["God Mode: #{onoff(@god_mode)}",            :tog_god],
       ["No Clip: #{onoff(@no_clip)}",              :tog_clip],
+      ["No Encounters: #{onoff(@no_encounters)}",  :tog_encounters],
       ["Game Speed: #{@speed_mult}x",              :tog_speed],
       ["Battle Speed: #{@battle_speed_mult}x",     :tog_bspeed],
       ["Damage Multiplier: #{@damage_mult}x",      :tog_damage],
@@ -602,6 +604,8 @@ module RMVC
       $game_party.all_members.each { |a| a.hp = 1 if a.alive? }
       flash("Set party HP to 1")
     when :stat_pick     then open_stat_picker
+    when :state_pick    then open_state_actor_picker
+    when :skill_pick    then open_skill_actor_picker
 
     when :gold_10k
       $game_party.gain_gold(10_000)
@@ -629,8 +633,9 @@ module RMVC
       flash("Healed all enemies")
 
     when :map_list  then open_map_list
-    when :tp_save   then save_position
-    when :tp_load   then load_position
+    when :tp_slots  then open_tp_slots
+    when :confirm_yes then run_confirm(true)
+    when :confirm_no  then run_confirm(false)
     when :switches  then open_switch_explorer
     when :variables then open_variable_explorer
 
@@ -642,6 +647,10 @@ module RMVC
       @no_clip = !@no_clip
       refresh_current_command_page
       flash("No Clip #{onoff(@no_clip)}")
+    when :tog_encounters
+      @no_encounters = !@no_encounters
+      refresh_current_command_page
+      flash("No Encounters #{onoff(@no_encounters)}")
     when :tog_speed, :tog_bspeed, :tog_damage, :tog_exp
       adjust_command_value(symbol, 1)
 
@@ -806,6 +815,98 @@ module RMVC
                    "Right/Enter: +   Left: -   Shift: x10   Esc: Back")
   end
 
+  # ---- state editor (buffs / debuffs / conditions) -------------------------
+  # Pick an actor, then browse every state in the database and toggle it on or
+  # off the actor. Right adds the state, Left removes it, Enter toggles.
+  def self.open_state_actor_picker
+    members = $game_party.all_members
+    if members.empty?
+      flash("No party members", false)
+      return
+    end
+    formatter = proc { |a| "#{a.name}   states: #{a.states.size}" }
+    pick = proc { |a| open_state_editor(a); nil }
+    push_list_page("State editor - select actor", members, formatter,
+                   { confirm: pick }, "Enter: Edit   Esc: Back")
+  end
+
+  def self.open_state_editor(actor)
+    rows = $data_states.compact.select { |s| !s.name.to_s.empty? }
+    if rows.empty?
+      flash("No states in database", false)
+      return
+    end
+    formatter = proc { |s| sprintf("%03d  %s   [%s]", s.id, s.name, actor.state?(s.id) ? "ON" : "off") }
+    add = proc do |s|
+      actor.add_state(s.id)
+      "#{actor.name}: +#{s.name}"
+    end
+    remove = proc do |s|
+      actor.remove_state(s.id)
+      "#{actor.name}: -#{s.name}"
+    end
+    toggle = proc do |s|
+      if actor.state?(s.id)
+        actor.remove_state(s.id)
+        "#{actor.name}: -#{s.name}"
+      else
+        actor.add_state(s.id)
+        "#{actor.name}: +#{s.name}"
+      end
+    end
+    name_of = proc { |s| "#{s.id} #{s.name}" }
+    push_search_list_page("States - #{actor.name}", rows, formatter,
+                          { confirm: toggle, right: add, left: remove },
+                          "Type: search   Enter: Toggle   Right: Add   Left: Remove   Esc: clear/back",
+                          name_of, proc { |s| s.icon_index })
+  end
+
+  # ---- skill editor / spawner ----------------------------------------------
+  # Pick an actor, then browse every skill in the database. Enter toggles
+  # learned/forgotten, Right learns (spawn), Left forgets.
+  def self.open_skill_actor_picker
+    members = $game_party.all_members
+    if members.empty?
+      flash("No party members", false)
+      return
+    end
+    formatter = proc { |a| "#{a.name}   skills: #{a.skills.size}" }
+    pick = proc { |a| open_skill_editor(a); nil }
+    push_list_page("Skill editor - select actor", members, formatter,
+                   { confirm: pick }, "Enter: Edit   Esc: Back")
+  end
+
+  def self.open_skill_editor(actor)
+    rows = $data_skills.compact.select { |s| !s.name.to_s.empty? }
+    if rows.empty?
+      flash("No skills in database", false)
+      return
+    end
+    formatter = proc { |s| sprintf("%03d  %s   [%s]", s.id, s.name, actor.skill_learn?(s) ? "learned" : "-") }
+    learn = proc do |s|
+      actor.learn_skill(s.id)
+      "#{actor.name} learned #{s.name}"
+    end
+    forget = proc do |s|
+      actor.forget_skill(s.id)
+      "#{actor.name} forgot #{s.name}"
+    end
+    toggle = proc do |s|
+      if actor.skill_learn?(s)
+        actor.forget_skill(s.id)
+        "#{actor.name} forgot #{s.name}"
+      else
+        actor.learn_skill(s.id)
+        "#{actor.name} learned #{s.name}"
+      end
+    end
+    name_of = proc { |s| "#{s.id} #{s.name}" }
+    push_search_list_page("Skills - #{actor.name}", rows, formatter,
+                          { confirm: toggle, right: learn, left: forget },
+                          "Type: search   Enter: Toggle   Right: Learn   Left: Forget   Esc: clear/back",
+                          name_of, proc { |s| s.icon_index })
+  end
+
   # ---- teleport ------------------------------------------------------------
   def self.teleport_to(map_id)
     x = $game_player.x
@@ -822,20 +923,110 @@ module RMVC
     nil
   end
 
-  def self.save_position
-    @saved_map_id = $game_map.map_id
-    @saved_x = $game_player.x
-    @saved_y = $game_player.y
-    flash("Saved position (map #{@saved_map_id} @ #{@saved_x},#{@saved_y})")
+  # ---- Yes/No confirmation page --------------------------------------------
+  # push_confirm shows a small command page; choosing Yes pops it and runs the
+  # stored callback, choosing No (or Esc) just pops it. The callback's String
+  # return value is flashed and the page underneath is refreshed.
+  def self.confirm_commands
+    [["Yes", :confirm_yes], ["No", :confirm_no]]
   end
 
-  def self.load_position
-    if @saved_map_id == -1
-      flash("No saved position", false)
-      return
+  def self.push_confirm(prompt, on_yes)
+    @confirm_yes = on_yes
+    push_command_page(prompt, method(:confirm_commands), "Enter: Select   Esc: Cancel")
+  end
+
+  def self.run_confirm(accepted)
+    action = @confirm_yes
+    @confirm_yes = nil
+    Sound.play_cancel unless accepted
+    pop_page
+    return unless accepted && action
+    message = action.call
+    page = @stack.last
+    if page && @menu_open && page[:window].respond_to?(:refresh) && !page[:window].disposed?
+      page[:window].refresh
     end
-    $game_player.reserve_transfer(@saved_map_id, @saved_x, @saved_y, 0)
+    flash(message) if message.is_a?(String)
+  end
+
+  # ---- teleportation slots -------------------------------------------------
+  # Numbered waypoints (session-lived). Enter teleports to a used slot (after a
+  # confirm) or captures the current position into an empty one; Right (re)saves
+  # the current position; Left clears. Overwriting or clearing a used slot, and
+  # teleporting to one, each prompt for confirmation first.
+  TP_SLOT_COUNT = 10
+
+  def self.open_tp_slots
+    rows = (0...TP_SLOT_COUNT).to_a
+    formatter = proc { |i| tp_slot_label(i) }
+    go  = proc { |i| tp_slot_confirm_teleport(i) }
+    set = proc { |i| tp_slot_confirm_save(i) }
+    clr = proc { |i| tp_slot_confirm_clear(i) }
+    push_list_page("Teleportation Slots", rows, formatter,
+                   { confirm: go, right: set, left: clr },
+                   "Enter: Teleport   Right: Save here   Left: Clear   Esc: Back")
+  end
+
+  def self.tp_slot_label(i)
+    slot = @tp_slots[i]
+    if slot
+      sprintf("Slot %d: %s @ %d,%d", i + 1, slot[:name], slot[:x], slot[:y])
+    else
+      sprintf("Slot %d: <empty>", i + 1)
+    end
+  end
+
+  def self.map_display_name(map_id)
+    infos = $data_mapinfos
+    name = infos && infos[map_id] ? infos[map_id].name : nil
+    (name.nil? || name.empty?) ? sprintf("Map %03d", map_id) : name
+  end
+
+  def self.set_tp_slot(i)
+    @tp_slots[i] = { map_id: $game_map.map_id, x: $game_player.x, y: $game_player.y,
+                     name: map_display_name($game_map.map_id) }
+    "Saved slot #{i + 1}: #{tp_slot_label(i)}"
+  end
+
+  # Enter: teleport to a used slot (with confirm); save into an empty one.
+  def self.tp_slot_confirm_teleport(i)
+    if @tp_slots[i]
+      slot = @tp_slots[i]
+      push_confirm("Teleport to slot #{i + 1} (#{slot[:name]})?", proc { do_teleport_slot(i) })
+      nil
+    else
+      set_tp_slot(i) # capture current position into the empty slot
+    end
+  end
+
+  # Right: save current position; confirm before overwriting a used slot.
+  def self.tp_slot_confirm_save(i)
+    if @tp_slots[i]
+      push_confirm("Overwrite slot #{i + 1}?", proc { set_tp_slot(i) })
+      nil
+    else
+      set_tp_slot(i)
+    end
+  end
+
+  # Left: clear a used slot, with confirm.
+  def self.tp_slot_confirm_clear(i)
+    if @tp_slots[i]
+      push_confirm("Clear slot #{i + 1}?", proc { @tp_slots.delete(i); "Cleared slot #{i + 1}" })
+      nil
+    else
+      Sound.play_buzzer
+      nil
+    end
+  end
+
+  def self.do_teleport_slot(i)
+    slot = @tp_slots[i]
+    return unless slot
+    $game_player.reserve_transfer(slot[:map_id], slot[:x], slot[:y], 0)
     close_menu
+    nil
   end
 
   # ---- save ----------------------------------------------------------------
