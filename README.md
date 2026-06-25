@@ -81,7 +81,7 @@ game remaps RPG Maker's logical controls.)
 | **Gold & Items** | Gain 10,000 / 100,000 gold · **Edit owned items** · **Item spawner** (every item / weapon / armor in the database, straight into your inventory) |
 | **Battle** (in battle only) | Kill all enemies · Set enemies HP to 1 · Heal all enemies |
 | **World / Teleport** | **Teleport to any map** (full map list) · Save current position · Load saved position |
-| **Toggles** | **God Mode** (party takes no damage / can't die) · **No Clip** (walk through walls) · **Game Speed** 1–4× · **Battle Speed** 1–4× |
+| **Toggles** | **God Mode** (party takes no damage / can't die) · **No Clip** (walk through walls) · **Game Speed** 1–4× · **Battle Speed** 1–4× · **Damage Multiplier** 1–4× · **EXP Multiplier** 1–4× |
 | **Switches & Variables** | Browse & toggle switches · Browse & edit variables |
 | **Custom Scripts** | Run `rmvc.q.rb` / `rmvc.w.rb` / `rmvc.e.rb` · Reload them |
 | **Save** | Save game to slot 2 |
