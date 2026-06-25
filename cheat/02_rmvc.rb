@@ -60,6 +60,7 @@ module RMVC
   FLASH_FRAMES = 150   # how long feedback toasts stay visible
   INPUT_REPEAT_WAIT = 20
   INPUT_REPEAT_INTERVAL = 4
+  SPEED_MULTIPLIER_MAX = 4
   MULTIPLIER_MAX = 100
 
   # noinspection RubyResolve
@@ -378,6 +379,16 @@ module RMVC
 
   def self.adjust_command_value(symbol, delta)
     case symbol
+    when :tog_speed
+      @speed_mult = adjust_speed_multiplier(@speed_mult, delta)
+      refresh_current_command_page
+      flash("Game Speed #{@speed_mult}x")
+      true
+    when :tog_bspeed
+      @battle_speed_mult = adjust_speed_multiplier(@battle_speed_mult, delta)
+      refresh_current_command_page
+      flash("Battle Speed #{@battle_speed_mult}x")
+      true
     when :tog_damage
       @damage_mult = adjust_multiplier(@damage_mult, delta)
       refresh_current_command_page
@@ -391,6 +402,10 @@ module RMVC
     else
       false
     end
+  end
+
+  def self.adjust_speed_multiplier(value, delta)
+    [[value + delta, 1].max, SPEED_MULTIPLIER_MAX].min
   end
 
   def self.adjust_multiplier(value, delta)
@@ -427,7 +442,7 @@ module RMVC
   end
 
   def self.handle_search_list_input(window, page)
-    if menu_cancel?
+    if @input[:cancel]
       # Esc clears the filter first, then leaves the page.
       if page[:filter].empty?
         Sound.play_cancel
@@ -623,11 +638,11 @@ module RMVC
       refresh_current_command_page
       flash("No Clip #{onoff(@no_clip)}")
     when :tog_speed
-      @speed_mult = @speed_mult >= 4 ? 1 : @speed_mult + 1
+      @speed_mult = @speed_mult >= SPEED_MULTIPLIER_MAX ? 1 : @speed_mult + 1
       refresh_current_command_page
       flash("Game Speed #{@speed_mult}x")
     when :tog_bspeed
-      @battle_speed_mult = @battle_speed_mult >= 4 ? 1 : @battle_speed_mult + 1
+      @battle_speed_mult = @battle_speed_mult >= SPEED_MULTIPLIER_MAX ? 1 : @battle_speed_mult + 1
       refresh_current_command_page
       flash("Battle Speed #{@battle_speed_mult}x")
     when :tog_damage

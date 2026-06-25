@@ -81,13 +81,17 @@ game remaps RPG Maker's logical controls.)
 | **Gold & Items** | Gain 10,000 / 100,000 gold · **Edit owned items** · **Item spawner** (every item / weapon / armor in the database, straight into your inventory) |
 | **Battle** (in battle only) | Kill all enemies · Set enemies HP to 1 · Heal all enemies |
 | **World / Teleport** | **Teleport to any map** (full map list) · Save current position · Load saved position |
-| **Toggles** | **God Mode** (party takes no damage / can't die) · **No Clip** (walk through walls) · **Game Speed** 1–4× · **Battle Speed** 1–4× · **Damage Multiplier** 1–4× · **EXP Multiplier** 1–4× |
+| **Toggles** | **God Mode** (party takes no damage / can't die) · **No Clip** (walk through walls) · **Game Speed** 1–4× · **Battle Speed** 1–4× · **Damage Multiplier** 1–100× · **EXP Multiplier** 1–100× |
 | **Switches & Variables** | Browse & toggle switches · Browse & edit variables |
 | **Custom Scripts** | Run `rmvc.q.rb` / `rmvc.w.rb` / `rmvc.e.rb` · Reload them |
 | **Save** | Save game to slot 2 |
 
 In list editors (items, spawner, variables, stats): **→ / Enter** increases,
-**←** decreases, hold **Shift** for the larger step (×10, or ×100 for variables).
+**←** decreases, hold **← / →** to repeat, and hold **Shift** for the larger
+step (×10, or ×100 for variables).
+On the toggles page, speed and multiplier rows also support **← / →** with
+hold-to-repeat. Search lists use **Esc** to clear/back so letters such as `x`
+can be typed even if the game maps them to cancel.
 
 Toggle cheats apply continuously even when the menu is closed. Game/Battle speed
 work by scaling the engine frame rate (Battle Speed only ramps up inside
