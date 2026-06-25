@@ -487,8 +487,8 @@ module RMVC
     [
       ["Party & Stats",            :menu_party],
       ["Gold & Items",             :menu_items],
-      ["Battle",                   :menu_battle, in_battle?], # disabled out of battle
-      ["World / Teleport",         :menu_world],
+      ["Battle",                   :menu_battle, in_battle?],  # disabled out of battle
+      ["World / Teleport",         :menu_world, !in_battle?],  # disabled in battle (teleport bugs)
       ["Toggles (God/Clip/Speed)", :menu_toggles],
       ["Switches & Variables",     :menu_data],
       ["Custom Scripts (rmvc)",    :menu_scripts],

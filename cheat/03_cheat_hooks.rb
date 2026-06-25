@@ -95,14 +95,29 @@ end
 
 # ---- No Encounters: suppress random battles ---------------------------------
 # encounter? gates whether a step can trigger a random battle, so returning
-# false disables them while leaving event-forced battles (Battle Processing) and
-# the encounter step counter untouched.
+# false disables them while leaving the encounter step counter untouched.
 class Game_Player
   if method_defined?(:encounter?)
     alias rmvc_noenc_encounter? encounter?
     def encounter?
       return false if RMVC.no_encounters
       rmvc_noenc_encounter?
+    end
+  end
+end
+
+# Roaming / touch enemies start their fight through the event "Battle Processing"
+# command (command_301). Skipping it when No Encounters is on means a roaming
+# enemy that walks into the player (Event/Player Touch) no longer starts a
+# battle; the rest of its event page still runs. The interpreter treats the
+# skipped battle as "no branch taken", so any If Win/Escape/Lose branches are
+# passed over and execution continues after them.
+class Game_Interpreter
+  if method_defined?(:command_301)
+    alias rmvc_noenc_command_301 command_301
+    def command_301
+      return if RMVC.no_encounters
+      rmvc_noenc_command_301
     end
   end
 end
