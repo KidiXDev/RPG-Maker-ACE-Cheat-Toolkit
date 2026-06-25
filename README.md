@@ -80,7 +80,7 @@ game remaps RPG Maker's logical controls.)
 | **Party & Stats** | Heal & revive all party · Set all party HP to 1 · **Stat editor** (per-actor: Level, EXP, HP/MP, and all 8 params) · **State editor** (per-actor: add/remove/toggle any buff, debuff, or condition) · **Skill editor / spawner** (per-actor: learn/forget/toggle any skill) |
 | **Gold & Items** | Gain 10,000 / 100,000 gold · **Edit owned items** · **Item spawner** (every item / weapon / armor in the database, straight into your inventory) |
 | **Battle** (in battle only) | Kill all enemies · Set enemies HP to 1 · Heal all enemies |
-| **World / Teleport** | **Teleport to any map** (full map list) · **Teleportation slots** (10 numbered, named waypoints — Enter teleports / captures, Right saves, Left clears; used slots confirm before teleport/overwrite/clear) |
+| **World / Teleport** (disabled in battle) | **Teleport to any map** (full map list) · **Teleportation slots** (10 numbered, named waypoints — Enter teleports / captures, Right saves, Left clears; used slots confirm before teleport/overwrite/clear) |
 | **Toggles** | **God Mode** (party takes no damage / can't die) · **No Clip** (walk through walls) · **No Encounters** (disable random battles) · **Game Speed** 1–4× · **Battle Speed** 1–4× · **Damage Multiplier** 1–100× · **EXP Multiplier** 1–100× |
 | **Switches & Variables** | Browse & toggle switches · Browse & edit variables |
 | **Custom Scripts** | Run `rmvc.q.rb` / `rmvc.w.rb` / `rmvc.e.rb` · Reload them |
@@ -115,6 +115,10 @@ Drop `rmvc.q.rb`, `rmvc.w.rb`, or `rmvc.e.rb` in the **game root folder**. The
 matching menu entry `eval`s the file in the cheat context (so `$game_party`,
 `$game_map`, etc. are available). Use **Reload** after editing. Errors in these
 scripts are caught and shown in the feedback banner instead of crashing.
+
+Teleportation slots are saved to `rmvc.cfg` in the same folder (a small binary
+file) so they persist across sessions. It is created/updated automatically; a
+missing or corrupt file is ignored safely.
 
 ## Notes & limitations
 
