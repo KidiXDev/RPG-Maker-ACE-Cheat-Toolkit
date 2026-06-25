@@ -58,6 +58,9 @@ module RMVC
   USER_SCRIPT_SLOTS = %w[q w e]
   LIST_CAP = 256       # cap rows to keep window bitmaps within texture limits
   FLASH_FRAMES = 150   # how long feedback toasts stay visible
+  INPUT_REPEAT_WAIT = 20
+  INPUT_REPEAT_INTERVAL = 4
+  MULTIPLIER_MAX = 100
 
   # noinspection RubyResolve
   GetKeyboardState = Win32API.new("user32.dll", "GetKeyboardState", "I", "I")
@@ -67,6 +70,7 @@ module RMVC
   @ctrl_was_down = false
   @prev_down     = {}
   @prev_type     = {}
+  @hold_frames   = {}
   @input         = {}
 
   @menu_open  = false
@@ -117,9 +121,20 @@ module RMVC
   def self.refresh_menu_input
     MENU_KEYS.each do |name, vks|
       down = vks.any? { |vk| key_down?(vk) }
-      @input[name] = down && !@prev_down[name]
+      @input[name] = repeated_menu_key?(name, down)
       @prev_down[name] = down
     end
+  end
+
+  def self.repeated_menu_key?(name, down)
+    return false unless down
+    @hold_frames[name] = (@hold_frames[name] || 0) + 1
+    return true unless @prev_down[name]
+    return false unless name == :left || name == :right
+    frames = @hold_frames[name]
+    frames > INPUT_REPEAT_WAIT && ((frames - INPUT_REPEAT_WAIT) % INPUT_REPEAT_INTERVAL == 0)
+  ensure
+    @hold_frames[name] = 0 unless down
   end
 
   # Returns a typed character, :backspace, or nil (edge-detected, one per frame).
@@ -349,6 +364,9 @@ module RMVC
     if menu_cancel?
       Sound.play_cancel
       pop_page
+    elsif (@input[:left] || @input[:right]) && window.current_item_enabled?
+      delta = @input[:right] ? 1 : -1
+      return if adjust_command_value(window.current_symbol, delta)
     elsif menu_confirm?
       if window.current_item_enabled?
         dispatch(window.current_symbol)
@@ -356,6 +374,27 @@ module RMVC
         Sound.play_buzzer # disabled command (e.g. Battle out of combat)
       end
     end
+  end
+
+  def self.adjust_command_value(symbol, delta)
+    case symbol
+    when :tog_damage
+      @damage_mult = adjust_multiplier(@damage_mult, delta)
+      refresh_current_command_page
+      flash("Damage Multiplier #{@damage_mult}x")
+      true
+    when :tog_exp
+      @exp_mult = adjust_multiplier(@exp_mult, delta)
+      refresh_current_command_page
+      flash("EXP Multiplier #{@exp_mult}x")
+      true
+    else
+      false
+    end
+  end
+
+  def self.adjust_multiplier(value, delta)
+    [[value + delta, 1].max, MULTIPLIER_MAX].min
   end
 
   def self.handle_list_input(window, page)
@@ -527,7 +566,7 @@ module RMVC
     when :menu_items    then push_command_page("Gold & Items", method(:items_menu_commands))
     when :menu_battle   then push_command_page("Battle", method(:battle_menu_commands))
     when :menu_world    then push_command_page("World / Teleport", method(:world_menu_commands))
-    when :menu_toggles  then push_command_page("Toggles", method(:toggle_menu_commands))
+    when :menu_toggles  then push_command_page("Toggles", method(:toggle_menu_commands), "Up/Down: Move   Right/Enter: +   Left: -   Hold: repeat   Esc: Back")
     when :menu_data     then push_command_page("Switches & Variables", method(:data_menu_commands))
     when :menu_scripts  then push_command_page("Custom Scripts", method(:script_menu_commands))
     when :spawn_menu    then push_command_page("Item Spawner", method(:spawn_menu_commands))
@@ -592,11 +631,11 @@ module RMVC
       refresh_current_command_page
       flash("Battle Speed #{@battle_speed_mult}x")
     when :tog_damage
-      @damage_mult = @damage_mult >= 4 ? 1 : @damage_mult + 1
+      @damage_mult = adjust_multiplier(@damage_mult, 1)
       refresh_current_command_page
       flash("Damage Multiplier #{@damage_mult}x")
     when :tog_exp
-      @exp_mult = @exp_mult >= 4 ? 1 : @exp_mult + 1
+      @exp_mult = adjust_multiplier(@exp_mult, 1)
       refresh_current_command_page
       flash("EXP Multiplier #{@exp_mult}x")
 
