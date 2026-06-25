@@ -4,6 +4,12 @@ An in-game cheat menu for RPG Maker VX Ace games. A small Windows patcher
 decrypts the game, injects a Ruby cheat module into the game's scripts, and
 repacks it. In game, press **CTRL + C** to open a navigable cheat menu.
 
+[![Badge](https://img.shields.io/badge/RPG%20Maker-VX%20Ace-FF0000.svg)](https://github.com/KidiXDev/RPG-Maker-ACE-Cheat-Toolkit)
+[![Badge](https://img.shields.io/badge/RPG%20Maker-MV/MZ-4A90E2.svg)](https://github.com/KidiXDev/RPG-Maker-MV-MZ-Cheat-Toolkit)
+
+> **NOTE**
+> If you are looking for RPG Maker MV or MZ support, check out the [RPG Maker MV/MZ Cheat Toolkit](https://github.com/KidiXDev/RPG-Maker-MV-MZ-Cheat-Toolkit).
+
 <p align="center">
   <img src="screenshot/cheat_menu.png" alt="Cheat Menu" width="600" />
 </p>
@@ -123,7 +129,7 @@ missing or corrupt file is ignored safely.
 ## Notes & limitations
 
 - VX Ace only (RGSSAD v3 / `.rgss3a`). The decrypter also handles v1
-  (`.rgssad` / `.rgss2a`) but VX Ace is the tested target.
+  (`.rgssad` / `.rgss2a`) but VX Ace is the tested target. For RPG Maker MV/MZ, use the [RPG Maker MV/MZ Cheat Toolkit](https://github.com/KidiXDev/RPG-Maker-MV-MZ-Cheat-Toolkit).
 - Avoid running the patcher from a path with non-ASCII characters.
 - The in-game module relies on the VX Ace Ruby runtime (RGSS301) APIs; it does
   not run standalone.
