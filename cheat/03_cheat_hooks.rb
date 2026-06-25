@@ -106,6 +106,33 @@ class Game_Player
   end
 end
 
+# Battle-capable map events commonly use "Approach" movement or explicit "Move
+# toward Player" route commands before their Battle Processing command. While
+# No Encounters is on, keep those roaming enemies from treating the player as a
+# target; non-battle NPCs keep their normal movement behaviour.
+class Game_Event
+  def rmvc_noenc_battle_event?
+    return false unless respond_to?(:list) && list
+    list.any? { |command| command && command.respond_to?(:code) && command.code == 301 }
+  end
+
+  if method_defined?(:near_the_player?)
+    alias rmvc_noenc_near_the_player? near_the_player?
+    def near_the_player?
+      return false if RMVC.no_encounters && rmvc_noenc_battle_event?
+      rmvc_noenc_near_the_player?
+    end
+  end
+
+  if method_defined?(:move_toward_player)
+    alias rmvc_noenc_move_toward_player move_toward_player
+    def move_toward_player
+      return if RMVC.no_encounters && rmvc_noenc_battle_event?
+      rmvc_noenc_move_toward_player
+    end
+  end
+end
+
 # Roaming / touch enemies start their fight through the event "Battle Processing"
 # command (command_301). Skipping it when No Encounters is on means a roaming
 # enemy that walks into the player (Event/Player Touch) no longer starts a
